@@ -1,6 +1,7 @@
 import functools
 import hmac
 import json
+import math
 import os
 import re
 import secrets
@@ -134,11 +135,12 @@ def create_app():
 
     def check_request_limit(conn):
         row = conn.execute("SELECT last_request_at FROM users WHERE id=?", (g.user["id"],)).fetchone()
-        remaining = row["last_request_at"] + 30 - int(time.time())
+        remaining = row["last_request_at"] + 30 - time.time()
         if remaining > 0:
-            response = jsonify(error=f"每 30 秒只能提交一次，请 {remaining} 秒后再试。", retry_after=remaining)
+            retry_after = math.ceil(remaining)
+            response = jsonify(error=f"每 30 秒只能提交一次，请 {retry_after} 秒后再试。", retry_after=retry_after)
             response.status_code = 429
-            response.headers["Retry-After"] = str(remaining)
+            response.headers["Retry-After"] = str(retry_after)
             return response
         pending = conn.execute("SELECT count(*) FROM jobs WHERE user_id=? AND status IN ('queued','processing')", (g.user["id"],)).fetchone()[0]
         if pending:
@@ -181,7 +183,7 @@ def create_app():
                     normalized = ImageOps.exif_transpose(opened).convert("RGB")
                     normalized.save(directory / "input.jpg", quality=95)
                 conn.execute("INSERT INTO jobs(id,user_id,original_name,created_at) VALUES (?,?,?,?)", (job_id, g.user["id"], Path(image.filename).name, int(time.time())))
-                conn.execute("UPDATE users SET last_request_at=? WHERE id=?", (int(time.time()), g.user["id"]))
+                conn.execute("UPDATE users SET last_request_at=? WHERE id=?", (time.time(), g.user["id"]))
             except (ValueError, UnidentifiedImageError, OSError, Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
                 shutil.rmtree(directory, ignore_errors=True)
                 return fail(str(exc) if isinstance(exc, ValueError) else "无法读取这张图片，请检查文件后重试。")
@@ -223,7 +225,7 @@ def create_app():
             if row["attempts"] >= 3:
                 return fail("重试次数已达上限，请重新拍摄清晰图片。", 429)
             conn.execute("UPDATE jobs SET status='queued',stage='等待处理',error=NULL WHERE id=?", (job_id,))
-            conn.execute("UPDATE users SET last_request_at=? WHERE id=?", (int(time.time()), g.user["id"]))
+            conn.execute("UPDATE users SET last_request_at=? WHERE id=?", (time.time(), g.user["id"]))
         return jsonify(ok=True)
 
     @app.get("/api/admin/users")

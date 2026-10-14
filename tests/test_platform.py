@@ -130,6 +130,20 @@ def test_concurrent_uploads_only_accept_one(app):
         assert conn.execute("SELECT count(*) FROM jobs").fetchone()[0] == 1
 
 
+def test_full_thirty_seconds_required(app, monkeypatch):
+    clock = [1000.9]
+    monkeypatch.setattr("paper.app.time.time", lambda: clock[0])
+    c = app.test_client()
+    headers = login(c)
+    assert upload(c, headers).status_code == 201
+    with connect() as conn:
+        conn.execute("UPDATE jobs SET status='completed'")
+    clock[0] = 1030.1
+    assert upload(c, headers).status_code == 429
+    clock[0] = 1030.9
+    assert upload(c, headers).status_code == 201
+
+
 def test_invalid_image_does_not_consume_slot(app):
     c = app.test_client()
     headers = login(c)
