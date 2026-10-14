@@ -10,6 +10,7 @@ import {
   Check,
   Clipboard,
   Download,
+  Eye,
   FileImage,
   FileText,
   Loader2,
@@ -31,6 +32,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { WordPreview } from "@/components/WordPreview";
 import {
   Table,
   TableBody,
@@ -533,6 +535,9 @@ function Uploader({
           {busy ? "正在上传…" : blocked || "识别并生成 Word"}
         </Button>
         <p className="mt-3 text-xs text-muted-foreground">
+          识别并生成 Word 预计需要约 3 分钟，排队时可能更久。
+        </p>
+        <p className="mt-2 text-xs text-muted-foreground">
           每个账号同时处理一张试卷，两次提交至少间隔 30 秒。
         </p>
       </CardContent>
@@ -547,7 +552,10 @@ function Jobs({
   jobs: Job[];
   onRetry: (id: string) => Promise<void>;
 }) {
-  const [selected, setSelected] = useState<string | null>(null),
+  const [selected, setSelected] = useState<{
+      id: string;
+      kind: "image" | "word";
+    } | null>(null),
     [retrying, setRetrying] = useState<string | null>(null);
   if (!jobs.length)
     return (
@@ -600,16 +608,43 @@ function Jobs({
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   size="sm"
                   variant="ghost"
                   onClick={() =>
-                    setSelected(selected === job.id ? null : job.id)
+                    setSelected(
+                      selected?.id === job.id && selected.kind === "image"
+                        ? null
+                        : { id: job.id, kind: "image" },
+                    )
                   }
                 >
-                  {selected === job.id ? "收起" : "查看原图"}
+                  {selected?.id === job.id && selected.kind === "image"
+                    ? "收起原图"
+                    : "查看原图"}
                 </Button>
+                {job.status === "completed" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    aria-expanded={
+                      selected?.id === job.id && selected.kind === "word"
+                    }
+                    onClick={() =>
+                      setSelected(
+                        selected?.id === job.id && selected.kind === "word"
+                          ? null
+                          : { id: job.id, kind: "word" },
+                      )
+                    }
+                  >
+                    <Eye size={15} />
+                    {selected?.id === job.id && selected.kind === "word"
+                      ? "收起预览"
+                      : "预览 Word"}
+                  </Button>
+                )}
                 {job.status === "completed" && (
                   <Button size="sm" asChild>
                     <a href={`/api/jobs/${job.id}/download`}>
@@ -637,6 +672,11 @@ function Jobs({
             {job.error && (
               <p className="mt-3 text-sm text-destructive">{job.error}</p>
             )}
+            {(job.status === "queued" || job.status === "processing") && (
+              <p className="mt-3 text-xs text-muted-foreground">
+                预计需要约 3 分钟，完成后即可预览和下载 Word。
+              </p>
+            )}
             {job.warnings.length > 0 && (
               <div className="mt-3 space-y-1 rounded-md bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">
                 {job.warnings.map((warning, i) => (
@@ -644,7 +684,10 @@ function Jobs({
                 ))}
               </div>
             )}
-            {selected === job.id && (
+            {selected?.id === job.id && selected.kind === "word" && (
+              <WordPreview key={job.id} jobId={job.id} />
+            )}
+            {selected?.id === job.id && selected.kind === "image" && (
               <div className="mt-5 rounded-lg border bg-muted/30 p-3">
                 <img
                   alt={job.original_name}

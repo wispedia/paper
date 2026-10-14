@@ -1,5 +1,10 @@
 # Third party notices
 
+The browser Word preview uses docx-preview 0.4.1 by Volodymyr Baydalka,
+licensed under Apache-2.0. The license is included at
+`frontend/licenses/docx-preview.LICENSE`. Source:
+https://github.com/VolodymyrBaydalka/docxjs.
+
 The UI component source under `frontend/src/components/ui` is derived from shadcn/ui.
 
 Copyright (c) 2023 shadcn

@@ -1,5 +1,21 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+
+.word-preview-pages {
+  width: max-content;
+  margin-inline: auto;
+}
+.word-preview .paper-docx-wrapper {
+  background: transparent !important;
+  padding: 12px !important;
+}
+.word-preview .paper-docx-wrapper > section {
+  margin-bottom: 16px;
+  box-shadow: 0 1px 6px #00000012;
+}
+.word-preview math {
+  font-family: "Cambria Math", "STIX Two Math", math;
+}
 @custom-variant dark (&:is(.dark *));
 @theme inline {
   --color-background: var(--background);
