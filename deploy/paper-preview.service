@@ -7,6 +7,7 @@ Requires=docker.service
 User=root
 WorkingDirectory=/srv/paper/current
 Environment=PAPER_DATA_DIR=/var/lib/paper
+Environment=DOCKER_CONFIG=/etc/paper/preview-docker
 ExecStart=/srv/paper/venv/bin/python -m paper.preview_service
 Restart=on-failure
 RestartSec=5
