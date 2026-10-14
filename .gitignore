@@ -1,0 +1,10 @@
+.worktrees/
+.venv/
+node_modules/
+dist/
+__pycache__/
+.pytest_cache/
+.env
+data/
+*.sqlite3
+*.log
