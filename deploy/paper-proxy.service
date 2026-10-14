@@ -1,0 +1,20 @@
+[Unit]
+Description=Paper private outbound proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=paper-proxy
+Group=paper-proxy
+ExecStart=/usr/local/bin/mihomo-paper -d /var/lib/paper-proxy -f /etc/paper-proxy/config.yaml
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/paper-proxy
+MemoryMax=180M
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,30 @@
+[Unit]
+Description=Paper exam transcription worker
+After=network-online.target paper-proxy.service
+Wants=network-online.target paper-proxy.service
+
+[Service]
+User=paper
+Group=paper
+WorkingDirectory=/srv/paper/current
+EnvironmentFile=/etc/paper/paper.env
+Environment=HTTP_PROXY=http://127.0.0.1:17898
+Environment=HTTPS_PROXY=http://127.0.0.1:17898
+Environment=ALL_PROXY=http://127.0.0.1:17898
+Environment=NO_PROXY=localhost,127.0.0.1
+ExecStart=/srv/paper/venv/bin/python -m paper.worker
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/paper
+MemoryMax=750M
+TasksMax=80
+
+[Install]
+WantedBy=multi-user.target
