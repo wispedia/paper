@@ -16,6 +16,7 @@ from paper.db import connect, data_dir
 from paper.security import hash_password
 from paper.document import build_document
 from paper.worker import claim, process
+from paper.preview import ensure_preview, source_digest, VERSION
 
 ORIGIN = "http://localhost"
 
@@ -222,3 +223,115 @@ def test_worker_failure_can_be_retried(app, tmp_path, monkeypatch):
     with connect() as conn:
         conn.execute("UPDATE users SET last_request_at=0")
     assert c.post(f"/api/jobs/{job_id}/retry", headers=headers).status_code == 200
+
+
+def test_preview_is_private_and_invalidates_when_word_changes(app):
+    owner, other = app.test_client(), app.test_client()
+    headers = login(owner)
+    login(other, "bobby")
+    job_id = upload(owner, headers).json["id"]
+    base = f"/api/jobs/{job_id}/preview"
+    assert owner.get(base).status_code == 404
+    assert other.get(base).status_code == 404
+    assert app.test_client().get(base).status_code == 401
+    directory = data_dir() / "jobs" / job_id
+    build_document(content(), directory)
+    with connect() as conn:
+        conn.execute("UPDATE jobs SET status='completed' WHERE id=?", (job_id,))
+    assert owner.get(base).json["status"] == "pending"
+    (directory / "preview").mkdir()
+    Image.new("RGB", (30, 40), "white").save(directory / "preview/page-1.png")
+    (directory / "preview.json").write_text(json.dumps({"version": VERSION, "source": source_digest(directory), "status": "ready", "pages": [{"number": 1, "width": 30, "height": 40}]}))
+    assert owner.get(base).json["pages"][0]["url"] == base + "/1"
+    assert owner.get(base + "/1").mimetype == "image/png"
+    assert owner.get(base + "/1").headers["Cache-Control"] == "no-store"
+    assert other.get(base + "/1").status_code == 404
+    assert app.test_client().get(base + "/1").status_code == 401
+    assert owner.get(base + "/0").status_code == 404
+    assert owner.get(base + "/2").status_code == 404
+    data = content()
+    data["title"] = "更新的试卷"
+    build_document(data, directory)
+    assert owner.get(base).json["status"] == "pending"
+    assert owner.get(base + "/1").status_code == 404
+
+
+def test_preview_failure_preserves_download_and_is_cached(app, monkeypatch):
+    owner = app.test_client()
+    job_id = upload(owner, login(owner)).json["id"]
+    directory = data_dir() / "jobs" / job_id
+    build_document(content(), directory)
+    with connect() as conn:
+        conn.execute("UPDATE jobs SET status='completed' WHERE id=?", (job_id,))
+    calls = []
+    def broken(command):
+        calls.append(command)
+        raise RuntimeError("Renderer not installed")
+    monkeypatch.setattr("paper.preview.run", broken)
+    ensure_preview(directory)
+    ensure_preview(directory)
+    assert len(calls) == 1
+    assert owner.get(f"/api/jobs/{job_id}/preview").json["status"] == "failed"
+    assert owner.get(f"/api/jobs/{job_id}/download").status_code == 200
+    assert owner.get("/api/jobs").json["jobs"][0]["status"] == "completed"
+
+
+def test_preview_rejects_excessive_page_count(tmp_path, monkeypatch):
+    build_document(content(), tmp_path)
+    calls = []
+    def renderer(command):
+        calls.append(command)
+        if "--version" in command:
+            return "LibreOffice 26.8.1"
+        if "--convert-to" in command:
+            from pathlib import Path
+            (Path(command[command.index("--outdir") + 1]) / "paper.pdf").write_bytes(b"%PDF")
+            return ""
+        return "Pages: 31\n"
+    monkeypatch.setattr("paper.preview.run", renderer)
+    ensure_preview(tmp_path)
+    assert len(calls) == 3
+    assert json.loads((tmp_path / "preview.json").read_text())["status"] == "failed"
+
+
+def test_preview_rejects_old_office_equation_renderer(tmp_path, monkeypatch):
+    build_document(content(), tmp_path)
+    calls = []
+    def old_office(command):
+        calls.append(command)
+        return "LibreOffice 7.1.8.1"
+    monkeypatch.setattr("paper.preview.run", old_office)
+    ensure_preview(tmp_path)
+    assert len(calls) == 1
+    assert json.loads((tmp_path / "preview.json").read_text())["status"] == "failed"
+
+
+def test_preview_supervisor_rejects_symlink_jobs_and_files(tmp_path):
+    from paper.preview_service import candidates
+    jobs = tmp_path / "jobs"
+    jobs.mkdir()
+    good = jobs / ("a" * 32)
+    good.mkdir()
+    (good / "paper.docx").write_bytes(b"word")
+    (jobs / ("b" * 32)).symlink_to(good, target_is_directory=True)
+    linked = jobs / ("c" * 32)
+    linked.mkdir()
+    (linked / "paper.docx").symlink_to(good / "paper.docx")
+    assert list(candidates(tmp_path)) == [good]
+
+
+def test_preview_copy_preserves_word_and_avoids_missing_operand_symbols(tmp_path):
+    from paper.preview import preview_copy
+    data = content()
+    data["sections"][0]["questions"][0]["stem"] = r"若 $a=$____，$\frac{1}{2}+x=$____，且 $x=2$。"
+    original = build_document(data, tmp_path)
+    before = original.read_bytes()
+    copy = tmp_path / "render-only.docx"
+    preview_copy(original, copy)
+    assert original.read_bytes() == before
+    with ZipFile(copy) as archive:
+        root = etree.fromstring(archive.read("word/document.xml"))
+        ns = {"m": "http://schemas.openxmlformats.org/officeDocument/2006/math", "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+        assert sum(node.text == "=" for node in root.findall(".//w:t", ns)) == 2
+        assert sum(node.text == "=" for node in root.findall(".//m:t", ns)) == 2
+        assert root.find(".//m:f", ns) is not None

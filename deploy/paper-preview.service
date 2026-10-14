@@ -1,0 +1,23 @@
+[Unit]
+Description=Paper private document preview renderer
+After=docker.service
+Requires=docker.service
+
+[Service]
+User=root
+WorkingDirectory=/srv/paper/current
+Environment=PAPER_DATA_DIR=/var/lib/paper
+ExecStart=/srv/paper/venv/bin/python -m paper.preview_service
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/paper
+MemoryMax=100M
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

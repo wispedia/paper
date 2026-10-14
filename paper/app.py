@@ -17,6 +17,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 
 from .db import connect, data_dir, initialize
 from .security import current_session, hash_password, new_session, token_hash, verify_password
+from .preview import manifest
 
 Image.MAX_IMAGE_PIXELS = 35_000_000
 USERNAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{2,31}$")
@@ -227,6 +228,31 @@ def create_app():
             conn.execute("UPDATE jobs SET status='queued',stage='等待处理',error=NULL WHERE id=?", (job_id,))
             conn.execute("UPDATE users SET last_request_at=? WHERE id=?", (time.time(), g.user["id"]))
         return jsonify(ok=True)
+
+    @app.get("/api/jobs/<job_id>/preview")
+    @authenticated
+    def preview_info(job_id):
+        row = owned_job(job_id)
+        if not row or row["status"] != "completed":
+            return fail("文件尚未生成。", 404)
+        value = manifest(data_dir() / "jobs" / job_id)
+        if not value:
+            return jsonify(status="pending", pages=[])
+        return jsonify(status=value["status"], pages=[{
+            **page, "url": f"/api/jobs/{job_id}/preview/{page['number']}"
+        } for page in value["pages"]])
+
+    @app.get("/api/jobs/<job_id>/preview/<int:page_number>")
+    @authenticated
+    def preview_page(job_id, page_number):
+        row = owned_job(job_id)
+        if not row or row["status"] != "completed":
+            return fail("任务不存在。", 404)
+        directory = data_dir() / "jobs" / job_id
+        value = manifest(directory)
+        if not value or value["status"] != "ready" or not 1 <= page_number <= len(value["pages"]):
+            return fail("预览尚未生成。", 404)
+        return send_file(directory / "preview" / f"page-{page_number}.png", mimetype="image/png")
 
     @app.get("/api/admin/users")
     @admin

@@ -552,6 +552,7 @@ function Jobs({
   jobs: Job[];
   onRetry: (id: string) => Promise<void>;
 }) {
+  const previewTrigger = useRef<HTMLButtonElement | null>(null);
   const [selected, setSelected] = useState<{
       id: string;
       kind: "image" | "word";
@@ -631,18 +632,17 @@ function Jobs({
                     aria-expanded={
                       selected?.id === job.id && selected.kind === "word"
                     }
-                    onClick={() =>
+                    onClick={(event) => {
+                      previewTrigger.current = event.currentTarget;
                       setSelected(
                         selected?.id === job.id && selected.kind === "word"
                           ? null
                           : { id: job.id, kind: "word" },
-                      )
-                    }
+                      );
+                    }}
                   >
                     <Eye size={15} />
-                    {selected?.id === job.id && selected.kind === "word"
-                      ? "收起预览"
-                      : "预览 Word"}
+                    预览 Word
                   </Button>
                 )}
                 {job.status === "completed" && (
@@ -685,7 +685,13 @@ function Jobs({
               </div>
             )}
             {selected?.id === job.id && selected.kind === "word" && (
-              <WordPreview key={job.id} jobId={job.id} />
+              <WordPreview
+                key={job.id}
+                jobId={job.id}
+                title={job.title || job.original_name}
+                onClose={() => setSelected(null)}
+                onRestoreFocus={() => previewTrigger.current?.focus()}
+              />
             )}
             {selected?.id === job.id && selected.kind === "image" && (
               <div className="mt-5 rounded-lg border bg-muted/30 p-3">
