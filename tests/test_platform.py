@@ -12,7 +12,7 @@ from PIL import Image
 from lxml import etree
 
 from paper.app import create_app
-from paper.db import connect, data_dir
+from paper.db import connect, data_dir, initialize
 from paper.security import hash_password
 from paper.document import build_document
 from paper.worker import claim, process
@@ -47,8 +47,43 @@ def image():
     return buf
 
 
-def upload(client, headers):
-    return client.post("/api/jobs", data={"image": (image(), "exam.png")}, headers=headers)
+def upload(client, headers, mode=None):
+    data = {"image": (image(), "exam.png")}
+    if mode is not None:
+        data["recognition_mode"] = mode
+    return client.post("/api/jobs", data=data, headers=headers)
+
+
+@pytest.mark.parametrize("mode", ["standard", "fine"])
+def test_recognition_mode_is_saved_and_retained_on_retry(app, mode):
+    client = app.test_client()
+    headers = login(client)
+    job_id = upload(client, headers, mode).json["id"]
+    assert client.get("/api/jobs").json["jobs"][0]["recognition_mode"] == mode
+    with connect() as conn:
+        conn.execute("UPDATE jobs SET status='failed' WHERE id=?", (job_id,))
+        conn.execute("UPDATE users SET last_request_at=0")
+    assert client.post(f"/api/jobs/{job_id}/retry", json={"recognition_mode": "other"}, headers=headers).status_code == 200
+    assert claim()["recognition_mode"] == mode
+
+
+def test_invalid_mode_does_not_consume_submission_allowance(app):
+    client = app.test_client()
+    headers = login(client)
+    assert upload(client, headers, "low").status_code == 400
+    assert upload(client, headers).status_code == 201
+    assert client.get("/api/jobs").json["jobs"][0]["recognition_mode"] == "standard"
+
+
+def test_existing_jobs_migrate_to_historical_high_mode(app):
+    with connect() as conn:
+        conn.execute("ALTER TABLE jobs DROP COLUMN recognition_mode")
+        conn.execute("INSERT INTO jobs(id,user_id,original_name,created_at) VALUES ('legacy',1,'old.jpg',0)")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(lambda _: initialize(), range(2)))
+    initialize()
+    with connect() as conn:
+        assert conn.execute("SELECT recognition_mode FROM jobs WHERE id='legacy'").fetchone()[0] == "fine"
 
 
 def test_login_csrf_and_no_registration(app):
@@ -190,19 +225,22 @@ def test_nested_square_roots_have_required_omml_degree(tmp_path):
             assert radical.find("m:radPr/m:degHide", ns).get("{http://schemas.openxmlformats.org/officeDocument/2006/math}val") == "1"
 
 
-def test_worker_generates_downloadable_word(app, tmp_path, monkeypatch):
+@pytest.mark.parametrize(("mode", "effort"), [("standard", "medium"), ("fine", "high")])
+def test_worker_generates_downloadable_word(app, tmp_path, monkeypatch, mode, effort):
     c = app.test_client()
     headers = login(c)
-    job_id = upload(c, headers).json["id"]
+    job_id = upload(c, headers, mode).json["id"]
     fixture = tmp_path / "fixture.json"
     fixture.write_text(json.dumps(content(), ensure_ascii=False))
     fake = tmp_path / "fake-codex"
-    fake.write_text("#!/usr/bin/env python3\nimport json,sys,pathlib\na=sys.argv\np=pathlib.Path(a[a.index('--output-last-message')+1])\np.write_text(pathlib.Path(" + repr(str(fixture)) + ").read_text())\nprint(json.dumps({'type':'turn.completed','usage':{'input_tokens':100,'output_tokens':200}}))\n")
+    arguments = tmp_path / "arguments.json"
+    fake.write_text("#!/usr/bin/env python3\nimport json,sys,pathlib\na=sys.argv\npathlib.Path(" + repr(str(arguments)) + ").write_text(json.dumps(a))\np=pathlib.Path(a[a.index('--output-last-message')+1])\np.write_text(pathlib.Path(" + repr(str(fixture)) + ").read_text())\nprint(json.dumps({'type':'turn.completed','usage':{'input_tokens':100,'output_tokens':200}}))\n")
     fake.chmod(0o755)
     monkeypatch.setenv("PAPER_CODEX_BIN", str(fake))
     job = claim()
     assert job["id"] == job_id
     process(job)
+    assert f'model_reasoning_effort="{effort}"' in json.loads(arguments.read_text())
     assert c.get("/api/jobs").json["jobs"][0]["status"] == "completed"
     result = c.get(f"/api/jobs/{job_id}/download")
     assert result.status_code == 200 and result.data.startswith(b"PK")

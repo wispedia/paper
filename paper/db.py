@@ -45,3 +45,9 @@ def initialize():
         );
         CREATE INDEX IF NOT EXISTS jobs_user ON jobs(user_id, created_at);
         """)
+        # Historical jobs used high reasoning. Serialize the additive migration
+        # because the web and worker processes can start at the same time.
+        conn.execute("BEGIN IMMEDIATE")
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(jobs)")}
+        if "recognition_mode" not in columns:
+            conn.execute("ALTER TABLE jobs ADD COLUMN recognition_mode TEXT NOT NULL DEFAULT 'fine'")

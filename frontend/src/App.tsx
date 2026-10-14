@@ -59,6 +59,7 @@ type Job = {
   warnings: string[];
   error: string | null;
   attempts: number;
+  recognition_mode: "standard" | "fine";
 };
 type Credentials = { username: string; password: string };
 let csrf = "";
@@ -405,6 +406,7 @@ function Uploader({
   blocked: string;
 }) {
   const [file, setFile] = useState<File | null>(null),
+    [mode, setMode] = useState<"standard" | "fine">("standard"),
     [preview, setPreview] = useState(""),
     [busy, setBusy] = useState(false),
     [dragging, setDragging] = useState(false);
@@ -435,6 +437,7 @@ function Uploader({
     setBusy(true);
     const form = new FormData();
     form.append("image", file);
+    form.append("recognition_mode", mode);
     try {
       await api("/jobs", "POST", form);
       setFile(null);
@@ -522,6 +525,40 @@ function Uploader({
             </Button>
           </div>
         )}
+        <fieldset className="mt-5" disabled={busy}>
+          <legend className="mb-2 text-sm font-medium">识别档位</legend>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {(
+              [
+                ["standard", "标准", "通常更快，适合日常识别"],
+                ["fine", "精细", "更多推理，耗时可能更长"],
+              ] as const
+            ).map(([value, title, description]) => (
+              <label
+                key={value}
+                className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring ${mode === value ? "border-primary bg-muted/50" : "border-border"}`}
+              >
+                <input
+                  type="radio"
+                  name="recognition-mode"
+                  value={value}
+                  checked={mode === value}
+                  onChange={() => setMode(value)}
+                  className="mt-1 accent-primary"
+                />
+                <span>
+                  <span className="font-medium">{title}</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    {description}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            两档均需核对题目，尤其是数学符号。
+          </p>
+        </fieldset>
         <Button
           className="mt-5 w-full sm:w-auto"
           disabled={!file || busy || !!blocked}
@@ -600,6 +637,11 @@ function Jobs({
                     </Badge>
                     <span className="text-xs text-muted-foreground">
                       {date(job.created_at)}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {job.recognition_mode === "fine"
+                        ? "精细识别"
+                        : "标准识别"}
                     </span>
                     {job.warnings.length > 0 && (
                       <span className="text-xs text-amber-700">

@@ -154,6 +154,9 @@ def create_app():
     @app.post("/api/jobs")
     @authenticated
     def upload():
+        mode = request.form.get("recognition_mode", "standard")
+        if mode not in {"standard", "fine"}:
+            return fail("请选择标准或精细识别档位。")
         image = request.files.get("image")
         if not image or not image.filename:
             return fail("请选择一张试卷图片。")
@@ -182,8 +185,8 @@ def create_app():
                         raise ValueError("图片像素过大，请缩小到 3500 万像素以内。")
                     opened.thumbnail((3200, 3200))
                     normalized = ImageOps.exif_transpose(opened).convert("RGB")
-                    normalized.save(directory / "input.jpg", quality=95)
-                conn.execute("INSERT INTO jobs(id,user_id,original_name,created_at) VALUES (?,?,?,?)", (job_id, g.user["id"], Path(image.filename).name, int(time.time())))
+                    normalized.save(directory / "input.jpg", quality=95, optimize=True)
+                conn.execute("INSERT INTO jobs(id,user_id,original_name,created_at,recognition_mode) VALUES (?,?,?,?,?)", (job_id, g.user["id"], Path(image.filename).name, int(time.time()), mode))
                 conn.execute("UPDATE users SET last_request_at=? WHERE id=?", (time.time(), g.user["id"]))
             except (ValueError, UnidentifiedImageError, OSError, Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
                 shutil.rmtree(directory, ignore_errors=True)

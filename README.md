@@ -6,6 +6,7 @@
 
 - 不开放注册；管理员创建账号、生成或重置密码、停用账号。
 - 支持 JPG、PNG、WebP 静态图片，最大 12 MB、3500 万像素。
+- 上传前选择标准或精细档位；任务记录使用的档位，失败重试沿用该档位。
 - 每个账号最多一个排队或运行中的任务；两次成功提交或重试至少间隔 30 秒。
 - 独立后台队列，整台机器同时处理一个任务，失败支持有限次数重试。
 - 用户只能查看自己的原图、在弹窗预览自己的 Word 或下载文件。服务器用 LibreOffice 将原 Word 渲染为分页图像，避免浏览器再次转换公式；不同办公软件的字体和分页可能略有差异。
@@ -30,7 +31,7 @@ cd ..
 先创建本地管理员。命令仅显示一次随机密码，已有账号不会被覆盖：
 
 ```sh
-.venv/bin/python -m paper.manage create-admin --username admin
+.venv/bin/python -m paper.manage create-admin --username guanchi
 ```
 
 在两个终端中分别运行网站与 Worker：
@@ -44,9 +45,11 @@ PAPER_SECURE_COOKIE=0 PAPER_ALLOWED_ORIGINS=http://127.0.0.1:8030 .venv/bin/pyth
 
 ## 模型与识别
 
-默认基准为 `gpt-6.1-sol`，推理档位固定 `high`。通过 `PAPER_CODEX_MODEL` 配置模型；更换模型前应使用真实试卷逐题比较，尤其是根号次数、指数、对数底数、不等号、跨栏选项和被批注遮挡的部分。
+默认模型为 `gpt-6.1-sol`。新上传任务默认标准档（`medium`），可切换精细档（`high`）；历史任务迁移后标为精细档。档位保存在任务中，失败重试不会因页面当前选择而改变。通过 `PAPER_CODEX_MODEL` 配置模型；更换模型前应使用真实试卷逐题比较，尤其是根号次数、指数、对数底数、不等号、跨栏选项和被批注遮挡的部分。
 
-实验性 `PAPER_IMAGE_ZOOM=1` 会同时提供完整图和四个重叠局部图；默认关闭。本次较低价格模型在开启局部图后仍未通过质量对照，因此生产环境保持 Sol 6.1 high。详见 [首次上线验证](docs/validation.md)。
+实验性 `PAPER_IMAGE_ZOOM=1` 会同时提供完整图和四个重叠局部图；默认关闭。Luna 的质量对照仍有未提示的公式及选项错误，生产模型保持 Sol 6.1。medium 和 high 都需要核对，精细档也不保证修复所有错误。详见 [验证记录](docs/validation.md)。
+
+图片先按 EXIF 校正方向，长边最多 3200 像素，去除元数据并以 JPEG 95 保存；优化 Huffman 编码以减少文件体积，不降低既定编码质量。文件 KB/MB 下降不等于图片 token 同比例下降；不会为节省 token 自动裁掉题目或强行缩至低分辨率。
 
 CLI 采用 `codex exec --json --output-schema`，同时关闭 shell、多智能体、插件、应用、钩子、浏览器、电脑操作及网页搜索。识别结果进入 JSON Schema 校验后再生成文档。每个任务的 `events.jsonl` 保留 CLI 用量记录；凭据和任务文件不提供公开静态访问。
 

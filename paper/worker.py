@@ -55,6 +55,7 @@ def process(job):
     schema.write_text(json.dumps(SCHEMA, ensure_ascii=False))
     result = directory / "result.json"
     result.unlink(missing_ok=True)
+    effort = "medium" if job["recognition_mode"] == "standard" else "high"
     command = [os.environ.get("PAPER_CODEX_BIN", "codex"), "exec",
         "--ignore-user-config", "--ignore-rules", "--ephemeral", "--skip-git-repo-check",
         "--sandbox", "read-only", "--disable", "shell_tool", "--disable", "multi_agent",
@@ -62,7 +63,7 @@ def process(job):
         "--disable", "browser_use", "--disable", "computer_use", "--disable", "image_generation",
         "--disable", "sleep_tool", "--disable", "goals",
         "-c", 'web_search="disabled"', "-c", 'approval_policy="never"',
-        "-c", 'model_reasoning_effort="high"', "-c", 'service_tier="default"',
+        "-c", f'model_reasoning_effort="{effort}"', "-c", 'service_tier="default"',
         "--model", os.environ.get("PAPER_CODEX_MODEL", "gpt-6.1-sol"),
         "--cd", str(directory), "--image", *[str(p) for p in input_images(directory)],
         "--json", "--output-schema", str(schema), "--output-last-message", str(result), "-"]
