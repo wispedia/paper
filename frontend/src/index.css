@@ -27,25 +27,25 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 :root {
-  --radius: 0.65rem;
-  --background: #fafafa;
+  --radius: 0.75rem;
+  --background: #f6f7f5;
   --foreground: #18181b;
   --card: #fff;
   --card-foreground: #18181b;
   --popover: #fff;
   --popover-foreground: #18181b;
-  --primary: #18181b;
+  --primary: #285b4a;
   --primary-foreground: #fafafa;
-  --secondary: #f4f4f5;
+  --secondary: #edf1ee;
   --secondary-foreground: #18181b;
-  --muted: #f4f4f5;
+  --muted: #f1f3f0;
   --muted-foreground: #71717a;
-  --accent: #f4f4f5;
+  --accent: #eaf0eb;
   --accent-foreground: #18181b;
   --destructive: #dc2626;
-  --border: #e4e4e7;
-  --input: #e4e4e7;
-  --ring: #a1a1aa;
+  --border: #e1e6e2;
+  --input: #dce2dd;
+  --ring: #6b9484;
 }
 @layer base {
   * {

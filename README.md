@@ -47,11 +47,11 @@ PAPER_SECURE_COOKIE=0 PAPER_ALLOWED_ORIGINS=http://127.0.0.1:8030 .venv/bin/pyth
 
 ## 模型与识别
 
-默认模型为 `gpt-6.1-sol`。新上传任务默认标准档（`medium`），可切换精细档（`high`）；历史任务迁移后标为精细档。档位保存在任务中，失败重试不会因页面当前选择而改变。通过 `PAPER_CODEX_MODEL` 配置模型；更换模型前应使用真实试卷逐题比较，尤其是根号次数、指数、对数底数、不等号、跨栏选项和被批注遮挡的部分。
+默认模型为 `gpt-6.1-sol`。印刷和手写新任务均默认普通档（`standard` / `medium`），可切换精细档（`fine` / `high`）；历史任务保留原档位。档位保存在任务中，失败重试不会因页面当前选择而改变。通过 `PAPER_CODEX_MODEL` 配置模型；更换模型前应使用真实试卷逐题比较，尤其是根号次数、指数、对数底数、不等号、跨栏选项和被批注遮挡的部分。
 
-上述档位切换仅用于印刷试卷。手写模式使用独立的提示、JSON Schema 和文档排版流程，服务端始终使用 `medium`。它保留可见的手写题目、答案与过程，不纠错、不评分；模糊和覆盖笔迹需人工核对，不把图形或选择题涂卡当成手写答案。所有模式继续使用原有认证、限流、队列、预览和下载权限。
+手写模式使用独立的提示、JSON Schema 和文档排版流程。它只保留有效的手写题目、答案与过程，跳过明确划掉的草稿，不纠错、不评分；按题号、分问、自然段和计算步骤重新排版，不复刻原图的零散位置。模糊和覆盖笔迹需人工核对，不把图形或选择题涂卡当成手写答案。旧结果中的 `crossed_out` 字段仍可读取，但不进入 Word。所有模式继续使用原有认证、限流、队列、预览和下载权限。
 
-`POST /api/jobs` 新增可选表单字段：`recognition_type=printed|handwritten`（默认 `printed`）和 `page_layout=auto|single|double`（手写默认 `auto`）。服务端将手写的 `recognition_mode` 规范为 `standard`，保存最终 `single|double` 布局；印刷保持 `single` 及原有标准/精细档位。历史任务增量迁移为印刷单页，重试保留已保存的模式、档位和布局。
+`POST /api/jobs` 接受 `recognition_type=printed|handwritten`（默认 `printed`）和 `recognition_mode=standard|fine`（默认 `standard`）。图片布局由服务端决定，无需用户选择；旧客户端传入的 `page_layout` 被忽略。手写宽高比达到 1.2 时自动按左右双页沿中线裁开，否则按单页；印刷保持单页。此为几何启发式，特殊横向单页可能被拆分，并非内容级页面检测。任务记录实际布局，失败重试沿用原模式、档位和布局。
 
 实验性 `PAPER_IMAGE_ZOOM=1` 会同时提供完整图和四个重叠局部图；默认关闭。Luna 的质量对照仍有未提示的公式及选项错误，生产模型保持 Sol 6.1。medium 和 high 都需要核对，精细档也不保证修复所有错误。详见 [验证记录](docs/validation.md)。
 

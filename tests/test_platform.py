@@ -89,32 +89,33 @@ def test_existing_jobs_migrate_to_historical_high_mode(app):
 @pytest.mark.parametrize(("size", "layout", "expected"), [
     ((1001, 700), "auto", "double"),
     ((600, 900), "auto", "single"),
-    ((1001, 700), "single", "single"),
-    ((900, 1100), "double", "double"),
+    ((1001, 700), "single", "double"),
+    ((900, 1100), "double", "single"),
 ])
-def test_handwriting_layout_mode_and_retry_are_persisted(app, size, layout, expected):
+@pytest.mark.parametrize("mode", ["standard", "fine"])
+def test_handwriting_automatically_selects_layout_and_retains_effort_on_retry(app, size, layout, expected, mode):
     c = app.test_client()
     headers = login(c)
     buf = io.BytesIO()
     Image.new("RGB", size, "white").save(buf, "PNG")
     buf.seek(0)
-    response = c.post("/api/jobs", data={"image": (buf, "handwriting.png"), "recognition_type": "handwritten", "recognition_mode": "fine", "page_layout": layout}, headers=headers)
+    response = c.post("/api/jobs", data={"image": (buf, "handwriting.png"), "recognition_type": "handwritten", "recognition_mode": mode, "page_layout": layout}, headers=headers)
     assert response.status_code == 201
     job_id = response.json["id"]
     saved = c.get("/api/jobs").json["jobs"][0]
-    assert (saved["recognition_type"], saved["recognition_mode"], saved["page_layout"]) == ("handwritten", "standard", expected)
+    assert (saved["recognition_type"], saved["recognition_mode"], saved["page_layout"]) == ("handwritten", mode, expected)
     with connect() as conn:
         conn.execute("UPDATE jobs SET status='failed' WHERE id=?", (job_id,))
         conn.execute("UPDATE users SET last_request_at=0")
     assert c.post(f"/api/jobs/{job_id}/retry", json={"recognition_type": "printed", "page_layout": "other"}, headers=headers).status_code == 200
     job = claim()
-    assert (job["recognition_type"], job["recognition_mode"], job["page_layout"]) == ("handwritten", "standard", expected)
+    assert (job["recognition_type"], job["recognition_mode"], job["page_layout"]) == ("handwritten", mode, expected)
 
 
 def test_handwriting_fields_validate_before_rate_limit_and_old_uploads_remain_printed(app):
     c = app.test_client()
     headers = login(c)
-    for fields in [{"recognition_type": "unknown"}, {"recognition_type": "handwritten", "page_layout": "vertical"}]:
+    for fields in [{"recognition_type": "unknown"}, {"recognition_type": "handwritten", "recognition_mode": "low"}]:
         assert c.post("/api/jobs", data={"image": (image(), "exam.png"), **fields}, headers=headers).status_code == 400
     assert upload(c, headers, "fine").status_code == 201
     saved = c.get("/api/jobs").json["jobs"][0]
@@ -280,15 +281,25 @@ def handwritten_content():
     return {"title": "手写内容电子版", "subtitle": "", "answers": [{"question": "13", "parts": [{"label": "（1）", "text": r"$v_2=-3\mathrm{m/s}$" + "\n" + r"$a=\frac{-3-4}{0.05}=140\mathrm{m/s^2}$" + "\n" + r"$\bar v=\frac{x}{t}$"}], "crossed_out": [r"$v_1-v_2$"], "uncertainties": ["覆盖的下标需核对。"]}], "notes": ["部分手写过程需对照原图。"]}
 
 
-def test_handwritten_word_separates_answers_discarded_drafts_and_uncertainties(tmp_path):
+def test_handwritten_word_reflows_parts_without_discarded_drafts(tmp_path):
     data = handwritten_content()
+    data["answers"][0]["crossed_out"].append("被删除草稿标记")
     data["answers"][0]["parts"].append({"label": "（2）", "text": "$f(x)=\\begin{cases}x^2,&x\\le0\\\\\n2x,&x>0\\end{cases}$"})
+    data["answers"][0]["parts"].append({"label": "（3）", "text": "这是同一段说明，\n不应按手写位置硬换行。"})
     with ZipFile(build_handwriting_document(data, tmp_path)) as archive:
         root = etree.fromstring(archive.read("word/document.xml"))
     ns = {"m": "http://schemas.openxmlformats.org/officeDocument/2006/math", "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
     text = "".join(root.itertext())
     assert "140" in text and "−140" not in text
-    assert text.index("140") < text.index("已划掉的草稿") < text.index("待核对内容")
+    assert "已划掉" not in text and "被删除草稿标记" not in text
+    assert text.index("140") < text.index("待核对内容")
+    paragraphs = root.findall(".//w:body/w:p", ns)
+    first_part = next(p for p in paragraphs if "（1）" in "".join(p.itertext()))
+    assert first_part.find(".//m:oMath", ns) is not None
+    assert not any("".join(p.itertext()).strip() in {"（1）", "（2）"} for p in paragraphs)
+    prose = next(p for p in paragraphs if "这是同一段说明" in "".join(p.itertext()))
+    assert "这是同一段说明，不应按手写位置硬换行。" in "".join(prose.itertext())
+    assert prose.find(".//w:br", ns) is None
     assert "第13题：覆盖的下标需核对。" in text
     assert "班级：" not in text and "部分手写过程需对照原图。" in text
     assert root.find(".//m:f", ns) is not None and root.find(".//m:sSup", ns) is not None
@@ -299,14 +310,19 @@ def test_handwritten_word_separates_answers_discarded_drafts_and_uncertainties(t
 
 
 @pytest.mark.parametrize("empty", [False, True])
-def test_handwriting_worker_uses_own_prompt_medium_and_split_pages(app, tmp_path, monkeypatch, empty):
+@pytest.mark.parametrize(("mode", "effort"), [("standard", "medium"), ("fine", "high")])
+def test_handwriting_worker_uses_selected_effort_and_split_pages(app, tmp_path, monkeypatch, empty, mode, effort):
     c = app.test_client()
     headers = login(c)
-    response = c.post("/api/jobs", data={"image": (image(), "answers.png"), "recognition_type": "handwritten", "page_layout": "double"}, headers=headers)
+    buf = io.BytesIO()
+    Image.new("RGB", (1001, 700), "white").save(buf, "PNG")
+    buf.seek(0)
+    response = c.post("/api/jobs", data={"image": (buf, "answers.png"), "recognition_type": "handwritten", "recognition_mode": mode}, headers=headers)
     assert response.status_code == 201
     job_id = response.json["id"]
     fixture = tmp_path / "handwritten-fixture.json"
     data = handwritten_content()
+    del data["answers"][0]["crossed_out"]
     if empty:
         data["answers"] = []
     fixture.write_text(json.dumps(data, ensure_ascii=False))
@@ -316,12 +332,9 @@ def test_handwriting_worker_uses_own_prompt_medium_and_split_pages(app, tmp_path
     fake.chmod(0o755)
     monkeypatch.setenv("PAPER_CODEX_BIN", str(fake))
     monkeypatch.setenv("PAPER_IMAGE_ZOOM", "1")
-    # Also enforce medium for a legacy/manually edited row whose effort says fine.
-    with connect() as conn:
-        conn.execute("UPDATE jobs SET recognition_mode='fine' WHERE id=?", (job_id,))
     process(claim())
     args = json.loads(arguments.read_text())
-    assert 'model_reasoning_effort="medium"' in args
+    assert f'model_reasoning_effort="{effort}"' in args
     paths = args[args.index("--image") + 1:args.index("--json")]
     assert len(paths) == 2 and paths[0].endswith("handwriting-left.png") and paths[1].endswith("handwriting-right.png")
     assert "手写" in prompt.read_text() and "左页、右页" in prompt.read_text()

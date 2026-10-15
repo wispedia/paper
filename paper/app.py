@@ -156,15 +156,10 @@ def create_app():
     def upload():
         mode = request.form.get("recognition_mode", "standard")
         if mode not in {"standard", "fine"}:
-            return fail("请选择标准或精细识别档位。")
+            return fail("请选择普通或精细识别档位。")
         recognition_type = request.form.get("recognition_type", "printed")
-        layout = request.form.get("page_layout", "auto")
         if recognition_type not in {"printed", "handwritten"}:
             return fail("请选择印刷试卷或手写识别模式。")
-        if layout not in {"auto", "single", "double"}:
-            return fail("请选择单页或左右双页布局。")
-        if recognition_type == "handwritten":
-            mode = "standard"
         image = request.files.get("image")
         if not image or not image.filename:
             return fail("请选择一张试卷图片。")
@@ -195,7 +190,7 @@ def create_app():
                     normalized = ImageOps.exif_transpose(opened).convert("RGB")
                     actual_layout = "single"
                     if recognition_type == "handwritten":
-                        actual_layout = ("double" if normalized.width >= normalized.height * 1.2 else "single") if layout == "auto" else layout
+                        actual_layout = "double" if normalized.width >= normalized.height * 1.2 else "single"
                         if actual_layout == "double" and normalized.width < 400:
                             raise ValueError("双页图片过窄，请分别上传单页原图。")
                     normalized.save(directory / "input.jpg", quality=95, optimize=True)

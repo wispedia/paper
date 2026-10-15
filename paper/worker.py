@@ -69,7 +69,7 @@ def process(job):
     schema.write_text(json.dumps(contract, ensure_ascii=False))
     result = directory / "result.json"
     result.unlink(missing_ok=True)
-    effort = "medium" if handwritten or job["recognition_mode"] == "standard" else "high"
+    effort = "medium" if job["recognition_mode"] == "standard" else "high"
     command = [os.environ.get("PAPER_CODEX_BIN", "codex"), "exec",
         "--ignore-user-config", "--ignore-rules", "--ephemeral", "--skip-git-repo-check",
         "--sandbox", "read-only", "--disable", "shell_tool", "--disable", "multi_agent",

@@ -138,27 +138,85 @@ def build_document(content, directory):
     return path
 
 
+def handwriting_paragraphs(text):
+    """Reflow prose outside equations; never split a multiline math construct."""
+    lines, current = [], ""
+    for token in MATH.split(text):
+        if token.startswith("$") and token.endswith("$"):
+            current += token
+            continue
+        fragments = token.split("\n")
+        current += fragments[0]
+        for fragment in fragments[1:]:
+            lines.append(current.strip())
+            current = fragment
+    lines.append(current.strip())
+    blocks = []
+    prose = ""
+    for line in lines:
+        # Pure calculation lines remain steps; natural-language lines wrap normally.
+        formula = bool(MATH.search(line)) and not MATH.sub("", line).strip(" 。；，;,. ")
+        if not line or formula:
+            if prose:
+                blocks.append(prose)
+                prose = ""
+            if line:
+                blocks.append(line)
+        else:
+            # A line break between Latin words needs a separator; Chinese does not.
+            separator = " " if prose and prose[-1:].isascii() and line[:1].isascii() else ""
+            prose += separator + line
+    if prose:
+        blocks.append(prose)
+    return blocks
+
+
 def build_handwriting_document(content, directory):
     from .handwriting import warnings
 
     doc = new_document(content, identity=False)
-    doc.add_paragraph("手写内容转录：保留原有作答与计算，不作纠错或评分。请对照原图核对涂改和数学符号。")
+    normal = doc.styles["Normal"].paragraph_format
+    normal.line_spacing = 1.15
+    normal.space_after = Pt(4)
+    title = doc.styles["Title"]
+    title.font.size = Pt(17)
+    title.paragraph_format.space_before = Pt(0)
+    title.paragraph_format.space_after = Pt(12)
+    heading = doc.styles["Heading 1"].paragraph_format
+    heading.space_before = Pt(11)
+    heading.space_after = Pt(5)
+    heading.keep_with_next = True
     for answer in content["answers"]:
         if answer["question"]:
             doc.add_paragraph("第" + answer["question"] + "题", style="Heading 1")
         for part in answer["parts"]:
-            if part["label"]:
-                inline(doc.add_paragraph(), part["label"])
-            inline(doc.add_paragraph(), part["text"])
-        if answer["crossed_out"]:
-            doc.add_paragraph("已划掉的草稿（仅供核对）", style="Heading 2")
-            for text in answer["crossed_out"]:
-                inline(doc.add_paragraph(), text)
+            blocks = handwriting_paragraphs(part["text"])
+            for index, block in enumerate(blocks or [""]):
+                p = doc.add_paragraph()
+                fmt = p.paragraph_format
+                fmt.left_indent = Cm(.85)
+                if index == 0 and part["label"]:
+                    fmt.space_before = Pt(3)
+                    fmt.first_line_indent = Cm(-.85)
+                    fmt.tab_stops.add_tab_stop(Cm(.85))
+                    p.add_run(part["label"] + "\t")
+                inline(p, block)
+                fmt.keep_together = bool(MATH.search(block)) and not MATH.sub("", block).strip(" 。；，;,. ")
+        # Legacy results may contain crossed_out; it is deliberately never exported.
     notes = warnings(content)
     if notes:
         doc.add_paragraph("待核对内容", style="Heading 1")
         for note in notes:
-            doc.add_paragraph(note)
+            p = doc.add_paragraph(note)
+            p.paragraph_format.space_after = Pt(3)
+            for run in p.runs:
+                run.font.size = Pt(9)
+                run.font.color.rgb = RGBColor(90, 90, 90)
+    footer = doc.sections[0].footer.paragraphs[0]
+    footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    field = OxmlElement("w:fldSimple")
+    field.set(qn("w:instr"), "PAGE")
+    footer._p.append(field)
     doc.core_properties.title = content["title"]
     doc.core_properties.author = ""
     path = Path(directory) / "paper.docx"

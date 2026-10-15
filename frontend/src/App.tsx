@@ -7,6 +7,10 @@ import {
 } from "react";
 import {
   ArrowRight,
+  Clock3,
+  PenLine,
+  Sparkles,
+  Zap,
   Check,
   Clipboard,
   Download,
@@ -181,7 +185,7 @@ export default function App() {
   return (
     <div className="min-h-screen">
       <header className="border-b bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-5 py-4 sm:px-8">
+        <div className="mx-auto flex max-w-[1040px] items-center justify-between gap-3 px-5 py-4 sm:px-8">
           <Brand />
           <div className="flex items-center gap-3">
             <span className="hidden text-sm text-muted-foreground sm:block">
@@ -207,15 +211,17 @@ export default function App() {
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-5 py-8 sm:px-8 sm:py-10">
+      <main className="mx-auto max-w-[1040px] px-5 py-8 sm:px-8 sm:py-12">
         <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              {page === "papers" ? "把试卷照片变成 Word" : "账号管理"}
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-[28px] sm:leading-snug">
+              {page === "papers"
+                ? "让纸上的内容，变成可编辑的 Word"
+                : "账号管理"}
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
               {page === "papers"
-                ? "选择印刷试卷或手写识别，获取可编辑的文字和数学公式。"
+                ? "印刷试卷与手写内容，都可以整理成清晰的电子文档。"
                 : "创建账号后，将账号和生成的密码交给使用者。"}
             </p>
           </div>
@@ -252,48 +258,22 @@ export default function App() {
           <Accounts onError={fail} />
         ) : (
           <>
-            <div className="grid items-start gap-6 lg:grid-cols-[1fr_300px]">
-              <Uploader
-                onUploaded={loadJobs}
-                onError={fail}
-                blocked={
-                  jobs.some(
-                    (j) => j.status === "queued" || j.status === "processing",
-                  )
-                    ? "等待当前任务完成"
-                    : nextRequestAt > now
-                      ? `${Math.ceil(nextRequestAt - now)} 秒后可再次提交`
-                      : ""
-                }
-              />
-              <Card className="shadow-none">
-                <CardHeader>
-                  <CardTitle className="text-base">上传前检查</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4 text-sm leading-relaxed text-muted-foreground">
-                  <p>整页拍摄，题目和选项都在画面中。</p>
-                  <p>尽量正对纸面，避免反光和遮挡。</p>
-                  <p>
-                    印刷模式忽略手写答案和批注；手写模式保留作答与计算过程。
-                  </p>
-                  <p>
-                    手写双页可先拆分；请核对图片布局。涂改和模糊内容需要人工核对。
-                  </p>
-                  <div className="border-t pt-4">
-                    <div className="mb-1 flex items-center gap-2 font-medium text-foreground">
-                      <FileText size={16} />
-                      可编辑的 Word
-                    </div>
-                    <p>
-                      文字与数学公式可以继续修改。印刷试卷的复杂配图保留原图局部。
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+            <Uploader
+              onUploaded={loadJobs}
+              onError={fail}
+              blocked={
+                jobs.some(
+                  (j) => j.status === "queued" || j.status === "processing",
+                )
+                  ? "等待当前任务完成"
+                  : nextRequestAt > now
+                    ? `${Math.ceil(nextRequestAt - now)} 秒后可再次提交`
+                    : ""
+              }
+            />
             <div className="mt-9">
               <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-base font-semibold">我的试卷</h2>
+                <h2 className="text-base font-semibold">我的文档</h2>
                 <span className="text-xs text-muted-foreground">
                   处理状态自动更新
                 </span>
@@ -418,8 +398,6 @@ function Uploader({
     [recognitionType, setRecognitionType] = useState<"printed" | "handwritten">(
       "printed",
     ),
-    [layout, setLayout] = useState<"auto" | "single" | "double">("auto"),
-    [wideImage, setWideImage] = useState<boolean | null>(null),
     [mode, setMode] = useState<"standard" | "fine">("standard"),
     [preview, setPreview] = useState(""),
     [busy, setBusy] = useState(false),
@@ -445,22 +423,14 @@ function Uploader({
       return;
     }
     setFile(f);
-    setWideImage(null);
   }
   async function upload() {
     if (!file) return;
     setBusy(true);
     const form = new FormData();
     form.append("image", file);
-    form.append(
-      "recognition_mode",
-      recognitionType === "handwritten" ? "standard" : mode,
-    );
+    form.append("recognition_mode", mode);
     form.append("recognition_type", recognitionType);
-    form.append(
-      "page_layout",
-      recognitionType === "handwritten" ? layout : "single",
-    );
     try {
       await api("/jobs", "POST", form);
       setFile(null);
@@ -473,52 +443,96 @@ function Uploader({
     }
   }
   return (
-    <Card className="shadow-none">
-      <CardHeader>
-        <CardTitle className="text-base">上传试卷图片</CardTitle>
-        <CardDescription>
-          {recognitionType === "handwritten"
-            ? "支持单页或左右双页手写图片。"
-            : "印刷试卷一次一页。"}
-          支持 JPG、PNG、WebP，最大 12 MB。
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <fieldset className="mb-5" disabled={busy}>
-          <legend className="mb-2 text-sm font-medium">识别模式</legend>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {(
-              [
-                ["printed", "印刷试卷", "提取印刷题目，忽略手写批注"],
-                ["handwritten", "手写识别", "保留手写答案和计算过程"],
-              ] as const
-            ).map(([value, title, description]) => (
-              <label
-                key={value}
-                className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring ${recognitionType === value ? "border-primary bg-muted/50" : "border-border"}`}
-              >
-                <input
-                  type="radio"
-                  name="recognition-type"
-                  value={value}
-                  checked={recognitionType === value}
-                  onChange={() => setRecognitionType(value)}
-                  className="mt-1 accent-primary"
-                />
-                <span>
-                  <span className="font-medium">{title}</span>
-                  <span className="mt-1 block text-xs text-muted-foreground">
-                    {description}
+    <Card className="gap-0 overflow-hidden py-0 shadow-[0_4px_24px_-16px_rgba(24,39,30,0.18)]">
+      <div className="border-b px-5 py-5 sm:px-7">
+        <div className="grid gap-5 sm:grid-cols-[1fr_auto] sm:items-center">
+          <fieldset className="min-w-0" disabled={busy}>
+            <legend className="mb-2 text-xs font-medium text-muted-foreground">
+              识别内容
+            </legend>
+            <div className="inline-flex w-full rounded-lg bg-muted p-1 sm:w-auto">
+              {(
+                [
+                  ["printed", "印刷试卷", FileText],
+                  ["handwritten", "手写识别", PenLine],
+                ] as const
+              ).map(([value, title, Icon]) => (
+                <label
+                  key={value}
+                  className="relative flex-1 cursor-pointer sm:flex-none"
+                >
+                  <input
+                    type="radio"
+                    name="recognition-type"
+                    value={value}
+                    checked={recognitionType === value}
+                    onChange={() => setRecognitionType(value)}
+                    className="peer sr-only"
+                  />
+                  <span className="flex min-h-10 items-center justify-center gap-2 rounded-md px-4 text-sm text-muted-foreground transition-colors peer-checked:bg-white peer-checked:font-medium peer-checked:text-primary peer-checked:shadow-sm peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-disabled:opacity-50">
+                    <Icon size={16} />
+                    {title}
                   </span>
-                </span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <fieldset className="min-w-0" disabled={busy}>
+            <legend className="mb-2 text-xs font-medium text-muted-foreground">
+              推理档位
+            </legend>
+            <div className="inline-flex w-full rounded-lg bg-muted p-1 sm:w-auto">
+              {(
+                [
+                  ["standard", "普通", Zap],
+                  ["fine", "精细", Sparkles],
+                ] as const
+              ).map(([value, title, Icon]) => (
+                <label
+                  key={value}
+                  className="relative flex-1 cursor-pointer sm:flex-none"
+                >
+                  <input
+                    type="radio"
+                    name="recognition-mode"
+                    value={value}
+                    checked={mode === value}
+                    onChange={() => setMode(value)}
+                    aria-describedby="reasoning-hint"
+                    className="peer sr-only"
+                  />
+                  <span className="flex min-h-10 items-center justify-center gap-2 rounded-md px-5 text-sm text-muted-foreground transition-colors peer-checked:bg-white peer-checked:font-medium peer-checked:text-primary peer-checked:shadow-sm peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-disabled:opacity-50">
+                    <Icon size={15} />
+                    {title}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        </div>
+        <div
+          className="mt-4 flex flex-col gap-1 text-xs leading-relaxed text-muted-foreground sm:flex-row sm:justify-between sm:gap-5"
+          aria-live="polite"
+        >
+          <p>
+            {recognitionType === "handwritten"
+              ? "提取有效手写内容，跳过划掉的草稿，重新整理排版。"
+              : "提取印刷题目和公式，忽略手写作答与批注。"}
+          </p>
+          <p id="reasoning-hint" className="sm:shrink-0">
+            {mode === "fine"
+              ? "更多推理，适合复杂内容，耗时较长"
+              : "适合日常识别，通常更快"}
+          </p>
+        </div>
+      </div>
+      <div className="px-5 py-5 sm:px-7 sm:py-6">
         <input
           ref={input}
           id="paper-image"
           type="file"
+          tabIndex={-1}
+          aria-hidden="true"
           accept="image/jpeg,image/png,image/webp"
           className="sr-only"
           disabled={busy}
@@ -529,6 +543,7 @@ function Uploader({
           role="button"
           tabIndex={busy ? -1 : 0}
           aria-label="选择试卷图片"
+          aria-disabled={busy}
           onKeyDown={(e) => {
             if (!busy && (e.key === "Enter" || e.key === " ")) {
               e.preventDefault();
@@ -545,38 +560,42 @@ function Uploader({
             setDragging(false);
             if (!busy) choose(e.dataTransfer.files[0]);
           }}
-          className={`flex min-h-60 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-8 text-center outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring ${dragging ? "border-primary bg-muted" : "border-border bg-muted/30 hover:bg-muted/60"}`}
+          className={`group flex min-h-64 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed px-5 py-7 text-center outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring ${dragging ? "border-primary bg-accent" : "border-primary/25 bg-muted/35 hover:border-primary/50 hover:bg-accent/60"} ${busy ? "pointer-events-none opacity-60" : ""}`}
         >
           {preview ? (
-            <img
-              src={preview}
-              alt="待上传的试卷"
-              onLoad={(event) =>
-                setWideImage(
-                  event.currentTarget.naturalWidth >=
-                    event.currentTarget.naturalHeight * 1.2,
-                )
-              }
-              className="max-h-56 max-w-full rounded object-contain"
-            />
+            <>
+              <img
+                src={preview}
+                alt="待上传的试卷"
+                className="max-h-60 max-w-full rounded object-contain"
+              />
+              <span className="mt-3 text-xs text-muted-foreground">
+                点击更换图片
+              </span>
+            </>
           ) : (
             <>
-              <div className="mb-4 rounded-full border bg-white p-4">
-                <UploadCloud className="text-muted-foreground" size={26} />
+              <div className="mb-5 rounded-2xl border bg-white p-4 text-primary shadow-sm">
+                <UploadCloud size={28} strokeWidth={1.5} />
               </div>
-              <p className="font-medium">点击选择，或拖入试卷照片</p>
+              <p className="text-base font-medium">点击选择，或拖入试卷照片</p>
               <p className="mt-2 text-xs text-muted-foreground">
-                请使用清晰、完整的原图
+                JPG、PNG、WebP · 最大 12 MB
               </p>
             </>
           )}
         </label>
         {file && (
-          <div className="mt-3 flex items-center justify-between gap-3 text-sm">
-            <span className="truncate text-muted-foreground">{file.name}</span>
+          <div className="mt-3 flex min-w-0 items-center justify-between gap-3 text-sm">
+            <span className="min-w-0 truncate text-muted-foreground">
+              {file.name}
+              <span className="ml-2 text-xs">
+                {(file.size / 1024 / 1024).toFixed(1)} MB
+              </span>
+            </span>
             <Button
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               aria-label="移除图片"
               disabled={busy}
               onClick={() => {
@@ -588,97 +607,41 @@ function Uploader({
             </Button>
           </div>
         )}
-        {recognitionType === "handwritten" ? (
-          <div className="mt-5 space-y-3">
-            <div className="space-y-2">
-              <Label htmlFor="page-layout">图片布局</Label>
-              <select
-                id="page-layout"
-                value={layout}
-                disabled={busy}
-                onChange={(event) =>
-                  setLayout(event.target.value as typeof layout)
-                }
-                className="h-10 w-full rounded-md border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <option value="auto">自动判断</option>
-                <option value="single">单页，不拆分</option>
-                <option value="double">左右双页，先裁开</option>
-              </select>
-              <p
-                className="text-xs leading-relaxed text-muted-foreground"
-                role="status"
-              >
-                {layout === "double" ||
-                (layout === "auto" && wideImage === true)
-                  ? "将沿图片中线裁为左右两页，再一起识别。横向单页请改选“单页”。"
-                  : layout === "single" || wideImage === false
-                    ? "将按完整单页识别，不裁开。若图片包含左右两页，请手动选择“双页”。"
-                    : "自动模式将横向宽图按左右双页拆分；上传后请确认布局，或手动选择。"}
-              </p>
-            </div>
-            <div className="rounded-lg border bg-muted/30 p-3 text-sm">
-              <p className="font-medium">标准档 · 手写识别</p>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                保留原有错答，不解题、不纠错。划掉的草稿单独列出；涂改、细小下标和模糊内容请对照原图核查。
-              </p>
-            </div>
-          </div>
-        ) : (
-          <fieldset className="mt-5" disabled={busy}>
-            <legend className="mb-2 text-sm font-medium">识别档位</legend>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {(
-                [
-                  ["standard", "标准", "通常更快，适合日常识别"],
-                  ["fine", "精细", "更多推理，耗时可能更长"],
-                ] as const
-              ).map(([value, title, description]) => (
-                <label
-                  key={value}
-                  className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring ${mode === value ? "border-primary bg-muted/50" : "border-border"}`}
-                >
-                  <input
-                    type="radio"
-                    name="recognition-mode"
-                    value={value}
-                    checked={mode === value}
-                    onChange={() => setMode(value)}
-                    className="mt-1 accent-primary"
-                  />
-                  <span>
-                    <span className="font-medium">{title}</span>
-                    <span className="mt-1 block text-xs text-muted-foreground">
-                      {description}
-                    </span>
-                  </span>
-                </label>
-              ))}
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              两档均需核对题目，尤其是数学符号。
-            </p>
-          </fieldset>
-        )}
+        <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5">
+            <Check size={13} className="text-primary" />
+            文字、公式可编辑
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <Check size={13} className="text-primary" />
+            {recognitionType === "handwritten"
+              ? "自动处理单页与左右双页"
+              : "整页拍摄，尽量正对纸面"}
+          </span>
+        </div>
+      </div>
+      <div className="flex flex-col gap-4 border-t bg-muted/25 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7">
+        <div className="text-xs leading-relaxed text-muted-foreground">
+          <p className="flex items-center gap-1.5">
+            <Clock3 size={14} />
+            预计约 3 分钟，精细档或排队时可能更久
+          </p>
+          <p className="mt-1">每个账号同时处理一张，两次提交至少间隔 30 秒。</p>
+        </div>
         <Button
-          className="mt-5 w-full sm:w-auto"
+          size="lg"
+          className="h-11 w-full rounded-lg px-6 sm:w-auto"
           disabled={!file || busy || !!blocked}
           onClick={upload}
         >
           {busy ? (
             <Loader2 className="animate-spin" size={16} />
           ) : (
-            <FileText size={16} />
+            <ArrowRight size={16} />
           )}
           {busy ? "正在上传…" : blocked || "识别并生成 Word"}
         </Button>
-        <p className="mt-3 text-xs text-muted-foreground">
-          识别并生成 Word 预计需要约 3 分钟，排队时可能更久。
-        </p>
-        <p className="mt-2 text-xs text-muted-foreground">
-          每个账号同时处理一张试卷，两次提交至少间隔 30 秒。
-        </p>
-      </CardContent>
+      </div>
     </Card>
   );
 }
@@ -700,7 +663,7 @@ function Jobs({
     return (
       <div className="rounded-xl border bg-white px-6 py-12 text-center">
         <FileImage className="mx-auto mb-3 text-muted-foreground" size={28} />
-        <p className="text-sm font-medium">还没有上传试卷</p>
+        <p className="text-sm font-medium">还没有生成文档</p>
         <p className="mt-2 text-xs text-muted-foreground">
           上传第一张图片，生成的 Word 会出现在这里。
         </p>
@@ -711,7 +674,7 @@ function Jobs({
       {jobs.map((job) => (
         <Card key={job.id} className="gap-0 py-0 shadow-none">
           <CardContent className="p-4 sm:p-5">
-            <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
               <div className="flex min-w-0 items-center gap-3">
                 <div
                   className={`shrink-0 rounded-lg p-3 ${job.status === "completed" ? "bg-emerald-50 text-emerald-700" : "bg-muted text-muted-foreground"}`}
@@ -725,7 +688,7 @@ function Jobs({
                   )}
                 </div>
                 <div className="min-w-0">
-                  <p className="max-w-60 truncate text-sm font-medium sm:max-w-md">
+                  <p className="max-w-[210px] truncate text-sm font-medium sm:max-w-md">
                     {job.title || job.original_name}
                   </p>
                   <div className="mt-1.5 flex flex-wrap items-center gap-2">
@@ -741,8 +704,8 @@ function Jobs({
                     </span>
                     <span className="text-xs text-muted-foreground">
                       {job.recognition_type === "handwritten"
-                        ? `手写识别 · 标准 · ${job.page_layout === "double" ? "双页拆分" : "单页"}`
-                        : `印刷试卷 · ${job.recognition_mode === "fine" ? "精细" : "标准"}`}
+                        ? `手写识别 · ${job.recognition_mode === "fine" ? "精细" : "普通"}`
+                        : `印刷试卷 · ${job.recognition_mode === "fine" ? "精细" : "普通"}`}
                     </span>
                     {job.warnings.length > 0 && (
                       <span className="text-xs text-amber-700">
@@ -752,7 +715,7 @@ function Jobs({
                   </div>
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex shrink-0 items-center justify-end gap-2 border-t pt-3 lg:border-0 lg:pt-0">
                 <Button
                   size="sm"
                   variant="ghost"
@@ -766,7 +729,7 @@ function Jobs({
                 >
                   {selected?.id === job.id && selected.kind === "image"
                     ? "收起原图"
-                    : "查看原图"}
+                    : "原图"}
                 </Button>
                 {job.status === "completed" && (
                   <Button
@@ -821,11 +784,16 @@ function Jobs({
               </p>
             )}
             {job.warnings.length > 0 && (
-              <div className="mt-3 space-y-1 rounded-md bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">
-                {job.warnings.map((warning, i) => (
-                  <p key={i}>{warning}</p>
-                ))}
-              </div>
+              <details className="mt-4 rounded-lg border border-amber-200/70 bg-amber-50/60 px-3 py-2.5 text-xs leading-relaxed text-amber-900">
+                <summary className="cursor-pointer font-medium">
+                  {job.warnings.length} 处内容待核对 · 展开查看
+                </summary>
+                <div className="mt-2 space-y-1">
+                  {job.warnings.map((warning, i) => (
+                    <p key={i}>{warning}</p>
+                  ))}
+                </div>
+              </details>
             )}
             {selected?.id === job.id && selected.kind === "word" && (
               <WordPreview
