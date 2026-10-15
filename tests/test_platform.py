@@ -509,3 +509,21 @@ def test_preview_copy_preserves_word_and_avoids_missing_operand_symbols(tmp_path
         assert sum(node.text == "=" for node in root.findall(".//w:t", ns)) == 2
         assert sum(node.text == "=" for node in root.findall(".//m:t", ns)) == 2
         assert root.find(".//m:f", ns) is not None
+
+
+def test_preview_preserves_leading_equal_and_unfinished_draft_without_placeholders(tmp_path):
+    from paper.preview import preview_copy
+    data = content()
+    data["sections"][0]["questions"][0]["stem"] = r"$=125-62.5$，草稿 $v_0+$，保留 $x^{+}$ 和 $-5$。"
+    original = build_document(data, tmp_path)
+    before = original.read_bytes()
+    copy = tmp_path / "edge-operators.docx"
+    preview_copy(original, copy)
+    assert original.read_bytes() == before
+    with ZipFile(copy) as archive:
+        root = etree.fromstring(archive.read("word/document.xml"))
+    ns = {"m": "http://schemas.openxmlformats.org/officeDocument/2006/math", "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+    assert [t.text for t in root.findall(".//w:t", ns)].count("=") == 1
+    assert [t.text for t in root.findall(".//w:t", ns)].count("+") == 1
+    assert root.find(".//m:sSup/m:sup/m:box/m:e/m:r/m:t", ns).text == "+"
+    assert "−5" in "".join(root.itertext())

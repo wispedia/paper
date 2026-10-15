@@ -13,21 +13,28 @@ from zipfile import ZipFile
 from PIL import Image
 
 log = logging.getLogger(__name__)
-VERSION = 5
+VERSION = 6
 
 
 def preview_copy(source, target):
-    # Writer adds a red missing-operand placeholder to equations ending in '='.
-    # Render the trailing equality sign as text in a disposable preview copy.
+    # Writer inserts missing operands for leading '=' and trailing operators.
+    # Render only those top-level edge operators as text in a preview copy.
     # Work on XML fragments to preserve every original namespace declaration.
     def formula(match):
         block = match[0]
-        tail = re.search(r'(<m:r\b[^>]*>(?:(?!<m:r\b).)*?<m:t(?:\s[^>]*)?>=</m:t>(?:(?!<m:r\b).)*?</m:r>)((?:</m:\w+>)+)$', block, re.S)
+        def operator(value):
+            return '<w:r><w:rPr><w:position w:val="4"/></w:rPr><w:t>' + value + '</w:t></w:r>'
+        run = r'<m:r\b[^>]*>(?:(?!<m:r\b).)*?<m:t(?:\s[^>]*)?>{token}</m:t>(?:(?!<m:r\b).)*?</m:r>'
+        head = re.match(r'(<m:oMath\b[^>]*>(?:<m:(?:box|e)\b[^>]*>)*)(' + run.format(token='=') + ')', block, re.S)
+        before = ""
+        if head:
+            before = operator("=")
+            block = head[1] + block[head.end():]
+        tail = re.search('(' + run.format(token='([=+−×÷/])') + r')((?:</m:(?:e|box)>)*</m:oMath>)$', block, re.S)
         if not tail:
-            return block
-        clean = block[:tail.start(1)] + tail[2]
-        equal = '<w:r><w:rPr><w:position w:val="4"/></w:rPr><w:t>=</w:t></w:r>'
-        return (clean if "<m:t" in clean else "") + equal
+            return before + (block if "<m:t" in block else "")
+        clean = block[:tail.start(1)] + tail[3]
+        return before + (clean if "<m:t" in clean else "") + operator(tail[2])
 
     with ZipFile(source) as original, ZipFile(target, "w") as copy:
         for item in original.infolist():
