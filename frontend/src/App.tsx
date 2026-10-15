@@ -60,6 +60,8 @@ type Job = {
   error: string | null;
   attempts: number;
   recognition_mode: "standard" | "fine";
+  recognition_type: "printed" | "handwritten";
+  page_layout: "single" | "double";
 };
 type Credentials = { username: string; password: string };
 let csrf = "";
@@ -213,7 +215,7 @@ export default function App() {
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
               {page === "papers"
-                ? "上传一张清晰的试卷，获取可编辑的题目和数学公式。"
+                ? "选择印刷试卷或手写识别，获取可编辑的文字和数学公式。"
                 : "创建账号后，将账号和生成的密码交给使用者。"}
             </p>
           </div>
@@ -271,13 +273,20 @@ export default function App() {
                 <CardContent className="space-y-4 text-sm leading-relaxed text-muted-foreground">
                   <p>整页拍摄，题目和选项都在画面中。</p>
                   <p>尽量正对纸面，避免反光和遮挡。</p>
-                  <p>系统会忽略手写答案和批注；模糊内容会标为待核对。</p>
+                  <p>
+                    印刷模式忽略手写答案和批注；手写模式保留作答与计算过程。
+                  </p>
+                  <p>
+                    手写双页可先拆分；请核对图片布局。涂改和模糊内容需要人工核对。
+                  </p>
                   <div className="border-t pt-4">
                     <div className="mb-1 flex items-center gap-2 font-medium text-foreground">
                       <FileText size={16} />
                       可编辑的 Word
                     </div>
-                    <p>文字与数学公式可以继续修改。复杂配图保留原图局部。</p>
+                    <p>
+                      文字与数学公式可以继续修改。印刷试卷的复杂配图保留原图局部。
+                    </p>
                   </div>
                 </CardContent>
               </Card>
@@ -406,6 +415,11 @@ function Uploader({
   blocked: string;
 }) {
   const [file, setFile] = useState<File | null>(null),
+    [recognitionType, setRecognitionType] = useState<"printed" | "handwritten">(
+      "printed",
+    ),
+    [layout, setLayout] = useState<"auto" | "single" | "double">("auto"),
+    [wideImage, setWideImage] = useState<boolean | null>(null),
     [mode, setMode] = useState<"standard" | "fine">("standard"),
     [preview, setPreview] = useState(""),
     [busy, setBusy] = useState(false),
@@ -431,13 +445,22 @@ function Uploader({
       return;
     }
     setFile(f);
+    setWideImage(null);
   }
   async function upload() {
     if (!file) return;
     setBusy(true);
     const form = new FormData();
     form.append("image", file);
-    form.append("recognition_mode", mode);
+    form.append(
+      "recognition_mode",
+      recognitionType === "handwritten" ? "standard" : mode,
+    );
+    form.append("recognition_type", recognitionType);
+    form.append(
+      "page_layout",
+      recognitionType === "handwritten" ? layout : "single",
+    );
     try {
       await api("/jobs", "POST", form);
       setFile(null);
@@ -454,10 +477,44 @@ function Uploader({
       <CardHeader>
         <CardTitle className="text-base">上传试卷图片</CardTitle>
         <CardDescription>
-          一次一页，支持 JPG、PNG、WebP，最大 12 MB。
+          {recognitionType === "handwritten"
+            ? "支持单页或左右双页手写图片。"
+            : "印刷试卷一次一页。"}
+          支持 JPG、PNG、WebP，最大 12 MB。
         </CardDescription>
       </CardHeader>
       <CardContent>
+        <fieldset className="mb-5" disabled={busy}>
+          <legend className="mb-2 text-sm font-medium">识别模式</legend>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {(
+              [
+                ["printed", "印刷试卷", "提取印刷题目，忽略手写批注"],
+                ["handwritten", "手写识别", "保留手写答案和计算过程"],
+              ] as const
+            ).map(([value, title, description]) => (
+              <label
+                key={value}
+                className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring ${recognitionType === value ? "border-primary bg-muted/50" : "border-border"}`}
+              >
+                <input
+                  type="radio"
+                  name="recognition-type"
+                  value={value}
+                  checked={recognitionType === value}
+                  onChange={() => setRecognitionType(value)}
+                  className="mt-1 accent-primary"
+                />
+                <span>
+                  <span className="font-medium">{title}</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    {description}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
         <input
           ref={input}
           id="paper-image"
@@ -494,6 +551,12 @@ function Uploader({
             <img
               src={preview}
               alt="待上传的试卷"
+              onLoad={(event) =>
+                setWideImage(
+                  event.currentTarget.naturalWidth >=
+                    event.currentTarget.naturalHeight * 1.2,
+                )
+              }
               className="max-h-56 max-w-full rounded object-contain"
             />
           ) : (
@@ -525,40 +588,78 @@ function Uploader({
             </Button>
           </div>
         )}
-        <fieldset className="mt-5" disabled={busy}>
-          <legend className="mb-2 text-sm font-medium">识别档位</legend>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {(
-              [
-                ["standard", "标准", "通常更快，适合日常识别"],
-                ["fine", "精细", "更多推理，耗时可能更长"],
-              ] as const
-            ).map(([value, title, description]) => (
-              <label
-                key={value}
-                className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring ${mode === value ? "border-primary bg-muted/50" : "border-border"}`}
+        {recognitionType === "handwritten" ? (
+          <div className="mt-5 space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="page-layout">图片布局</Label>
+              <select
+                id="page-layout"
+                value={layout}
+                disabled={busy}
+                onChange={(event) =>
+                  setLayout(event.target.value as typeof layout)
+                }
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <input
-                  type="radio"
-                  name="recognition-mode"
-                  value={value}
-                  checked={mode === value}
-                  onChange={() => setMode(value)}
-                  className="mt-1 accent-primary"
-                />
-                <span>
-                  <span className="font-medium">{title}</span>
-                  <span className="mt-1 block text-xs text-muted-foreground">
-                    {description}
-                  </span>
-                </span>
-              </label>
-            ))}
+                <option value="auto">自动判断</option>
+                <option value="single">单页，不拆分</option>
+                <option value="double">左右双页，先裁开</option>
+              </select>
+              <p
+                className="text-xs leading-relaxed text-muted-foreground"
+                role="status"
+              >
+                {layout === "double" ||
+                (layout === "auto" && wideImage === true)
+                  ? "将沿图片中线裁为左右两页，再一起识别。横向单页请改选“单页”。"
+                  : layout === "single" || wideImage === false
+                    ? "将按完整单页识别，不裁开。若图片包含左右两页，请手动选择“双页”。"
+                    : "自动模式将横向宽图按左右双页拆分；上传后请确认布局，或手动选择。"}
+              </p>
+            </div>
+            <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+              <p className="font-medium">标准档 · 手写识别</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                保留原有错答，不解题、不纠错。划掉的草稿单独列出；涂改、细小下标和模糊内容请对照原图核查。
+              </p>
+            </div>
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            两档均需核对题目，尤其是数学符号。
-          </p>
-        </fieldset>
+        ) : (
+          <fieldset className="mt-5" disabled={busy}>
+            <legend className="mb-2 text-sm font-medium">识别档位</legend>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {(
+                [
+                  ["standard", "标准", "通常更快，适合日常识别"],
+                  ["fine", "精细", "更多推理，耗时可能更长"],
+                ] as const
+              ).map(([value, title, description]) => (
+                <label
+                  key={value}
+                  className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring ${mode === value ? "border-primary bg-muted/50" : "border-border"}`}
+                >
+                  <input
+                    type="radio"
+                    name="recognition-mode"
+                    value={value}
+                    checked={mode === value}
+                    onChange={() => setMode(value)}
+                    className="mt-1 accent-primary"
+                  />
+                  <span>
+                    <span className="font-medium">{title}</span>
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      {description}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              两档均需核对题目，尤其是数学符号。
+            </p>
+          </fieldset>
+        )}
         <Button
           className="mt-5 w-full sm:w-auto"
           disabled={!file || busy || !!blocked}
@@ -639,9 +740,9 @@ function Jobs({
                       {date(job.created_at)}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {job.recognition_mode === "fine"
-                        ? "精细识别"
-                        : "标准识别"}
+                      {job.recognition_type === "handwritten"
+                        ? `手写识别 · 标准 · ${job.page_layout === "double" ? "双页拆分" : "单页"}`
+                        : `印刷试卷 · ${job.recognition_mode === "fine" ? "精细" : "标准"}`}
                     </span>
                     {job.warnings.length > 0 && (
                       <span className="text-xs text-amber-700">

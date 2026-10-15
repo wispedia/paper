@@ -21,6 +21,9 @@ def inline(paragraph, text):
             latex = part.strip("$").strip()
             try:
                 value = mathml_to_omml(latex_to_mathml(latex))
+                # mathml2omml 0.0.2 closes groupChrPr as groupChr for overbars.
+                # Repair only that malformed properties fragment, not valid groups.
+                value = re.sub(r"(<m:groupChrPr>(?:<m:\w+\b[^>]*/>)*)</m:groupChr>", r"\1</m:groupChrPr>", value)
                 # mathml2omml returns the native Word equation element.
                 xml = '<root xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">' + value + '</root>'
                 root = parse_xml(xml)
@@ -44,8 +47,7 @@ def inline(paragraph, text):
             paragraph.add_run(part)
 
 
-def build_document(content, directory):
-    directory = Path(directory)
+def new_document(content, identity=True):
     doc = Document()
     section = doc.sections[0]
     section.page_width, section.page_height = Cm(21), Cm(29.7)
@@ -57,7 +59,7 @@ def build_document(content, directory):
     normal._element.rPr.rFonts.set(qn("w:eastAsia"), "SimSun")
     normal.paragraph_format.line_spacing = 1.25
     normal.paragraph_format.space_after = Pt(8)
-    for name, size in [("Title", 19), ("Heading 1", 13)]:
+    for name, size in [("Title", 19), ("Heading 1", 13), ("Heading 2", 11)]:
         style = doc.styles[name]
         style.font.name = "SimSun"
         style._element.rPr.rFonts.set(qn("w:eastAsia"), "SimSun")
@@ -71,7 +73,14 @@ def build_document(content, directory):
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         inline(p, content["subtitle"])
-    doc.add_paragraph("班级：____________　姓名：____________　学号：____________")
+    if identity:
+        doc.add_paragraph("班级：____________　姓名：____________　学号：____________")
+    return doc
+
+
+def build_document(content, directory):
+    directory = Path(directory)
+    doc = new_document(content)
     for sec in content["sections"]:
         if sec["heading"]:
             doc.add_paragraph(sec["heading"], style="Heading 1")
@@ -125,5 +134,34 @@ def build_document(content, directory):
     doc.core_properties.title = content["title"]
     doc.core_properties.author = ""
     path = directory / "paper.docx"
+    doc.save(path)
+    return path
+
+
+def build_handwriting_document(content, directory):
+    from .handwriting import warnings
+
+    doc = new_document(content, identity=False)
+    doc.add_paragraph("手写内容转录：保留原有作答与计算，不作纠错或评分。请对照原图核对涂改和数学符号。")
+    for answer in content["answers"]:
+        if answer["question"]:
+            doc.add_paragraph("第" + answer["question"] + "题", style="Heading 1")
+        for part in answer["parts"]:
+            if part["label"]:
+                inline(doc.add_paragraph(), part["label"])
+            for line in part["text"].splitlines():
+                inline(doc.add_paragraph(), line)
+        if answer["crossed_out"]:
+            doc.add_paragraph("已划掉的草稿（仅供核对）", style="Heading 2")
+            for text in answer["crossed_out"]:
+                inline(doc.add_paragraph(), text)
+    notes = warnings(content)
+    if notes:
+        doc.add_paragraph("待核对内容", style="Heading 1")
+        for note in notes:
+            doc.add_paragraph(note)
+    doc.core_properties.title = content["title"]
+    doc.core_properties.author = ""
+    path = Path(directory) / "paper.docx"
     doc.save(path)
     return path

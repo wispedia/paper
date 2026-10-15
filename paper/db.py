@@ -51,3 +51,7 @@ def initialize():
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(jobs)")}
         if "recognition_mode" not in columns:
             conn.execute("ALTER TABLE jobs ADD COLUMN recognition_mode TEXT NOT NULL DEFAULT 'fine'")
+        if "recognition_type" not in columns:
+            conn.execute("ALTER TABLE jobs ADD COLUMN recognition_type TEXT NOT NULL DEFAULT 'printed'")
+        if "page_layout" not in columns:
+            conn.execute("ALTER TABLE jobs ADD COLUMN page_layout TEXT NOT NULL DEFAULT 'single'")
