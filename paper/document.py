@@ -149,8 +149,7 @@ def build_handwriting_document(content, directory):
         for part in answer["parts"]:
             if part["label"]:
                 inline(doc.add_paragraph(), part["label"])
-            for line in part["text"].splitlines():
-                inline(doc.add_paragraph(), line)
+            inline(doc.add_paragraph(), part["text"])
         if answer["crossed_out"]:
             doc.add_paragraph("已划掉的草稿（仅供核对）", style="Heading 2")
             for text in answer["crossed_out"]:

@@ -281,7 +281,9 @@ def handwritten_content():
 
 
 def test_handwritten_word_separates_answers_discarded_drafts_and_uncertainties(tmp_path):
-    with ZipFile(build_handwriting_document(handwritten_content(), tmp_path)) as archive:
+    data = handwritten_content()
+    data["answers"][0]["parts"].append({"label": "（2）", "text": "$f(x)=\\begin{cases}x^2,&x\\le0\\\\\n2x,&x>0\\end{cases}$"})
+    with ZipFile(build_handwriting_document(data, tmp_path)) as archive:
         root = etree.fromstring(archive.read("word/document.xml"))
     ns = {"m": "http://schemas.openxmlformats.org/officeDocument/2006/math", "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
     text = "".join(root.itertext())
@@ -293,6 +295,7 @@ def test_handwritten_word_separates_answers_discarded_drafts_and_uncertainties(t
     group = root.find(".//m:groupChr", ns)
     assert group.find("m:groupChrPr/m:chr", ns).get("{http://schemas.openxmlformats.org/officeDocument/2006/math}val") == "¯"
     assert group.find("m:e", ns) is not None
+    assert root.find(".//m:m", ns) is not None and "\\begin" not in text
 
 
 @pytest.mark.parametrize("empty", [False, True])
