@@ -130,7 +130,7 @@ def build_document(content, directory):
     if content["uncertainties"]:
         doc.add_paragraph("待核对内容", style="Heading 1")
         for note in content["uncertainties"]:
-            doc.add_paragraph(note)
+            inline(doc.add_paragraph(), note)
     doc.core_properties.title = content["title"]
     doc.core_properties.author = ""
     path = directory / "paper.docx"
@@ -140,6 +140,7 @@ def build_document(content, directory):
 
 def handwriting_calculation(text):
     outside = MATH.sub("", text).replace("【待核对】", "")
+    outside = outside.replace("【推测：", "").replace("，待核对】", "")
     return bool(MATH.search(text)) and not outside.strip(" 。；，;,. ")
 
 
@@ -214,7 +215,8 @@ def build_handwriting_document(content, directory):
     if notes:
         doc.add_paragraph("待核对内容", style="Heading 1")
         for note in notes:
-            p = doc.add_paragraph(note)
+            p = doc.add_paragraph()
+            inline(p, note)
             p.paragraph_format.space_after = Pt(3)
             for run in p.runs:
                 run.font.size = Pt(9)

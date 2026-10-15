@@ -314,6 +314,31 @@ def test_handwritten_word_reflows_parts_without_discarded_drafts(tmp_path):
     assert root.find(".//m:m", ns) is not None and "\\begin" not in text
 
 
+@pytest.mark.parametrize("kind", ["printed", "handwritten"])
+def test_inferred_and_unresolved_content_stays_marked_with_editable_math(tmp_path, kind):
+    text = r"【推测：$x=\frac{1}{16}$，待核对】" + "\n" + r"$y=8$。" + "\n" + r"$z=$【待核对】"
+    note = r"模糊的 x 值由可见公式 $-1=-16x$ 支持；z 没有唯一候选。"
+    if kind == "handwritten":
+        data = handwritten_content()
+        data["answers"][0]["parts"] = [{"label": "（1）", "text": text}]
+        data["answers"][0]["uncertainties"] = [note]
+        path = build_handwriting_document(data, tmp_path)
+    else:
+        data = {"title": "公式核对试卷", "subtitle": "", "sections": [{"heading": "", "instructions": "", "questions": [{"number": "1", "stem": text, "options": [], "subquestions": [], "figures": []}]}], "uncertainties": [note]}
+        path = build_document(data, tmp_path)
+    with ZipFile(path) as archive:
+        root = etree.fromstring(archive.read("word/document.xml"))
+    ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main", "m": "http://schemas.openxmlformats.org/officeDocument/2006/math"}
+    literal = "".join(root.itertext())
+    assert "【推测：" in literal and "，待核对】" in literal and "【待核对】" in literal
+    assert "$" not in literal and "\\frac" not in literal
+    assert root.find(".//m:f", ns) is not None
+    assert all("推测" not in "".join(node.itertext()) for node in root.findall(".//m:oMath", ns))
+    if kind == "handwritten":
+        p = next(p for p in root.findall(".//w:body/w:p", ns) if "【推测：" in "".join(p.itertext()))
+        assert "y" not in "".join(p.itertext())
+
+
 @pytest.mark.parametrize("empty", [False, True])
 @pytest.mark.parametrize(("mode", "effort"), [("standard", "medium"), ("fine", "high")])
 def test_handwriting_worker_uses_selected_effort_and_split_pages(app, tmp_path, monkeypatch, empty, mode, effort):
