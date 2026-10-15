@@ -1,0 +1,65 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+:root {
+  --radius: 0.75rem;
+  --background: #f6f7f5;
+  --foreground: #18181b;
+  --card: #fff;
+  --card-foreground: #18181b;
+  --popover: #fff;
+  --popover-foreground: #18181b;
+  --primary: #285b4a;
+  --primary-foreground: #fafafa;
+  --secondary: #edf1ee;
+  --secondary-foreground: #18181b;
+  --muted: #f1f3f0;
+  --muted-foreground: #71717a;
+  --accent: #eaf0eb;
+  --accent-foreground: #18181b;
+  --destructive: #dc2626;
+  --border: #e1e6e2;
+  --input: #dce2dd;
+  --ring: #6b9484;
+}
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family:
+      -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Microsoft YaHei", sans-serif;
+    margin: 0;
+  }
+  button,
+  a {
+    touch-action: manipulation;
+  }
+}

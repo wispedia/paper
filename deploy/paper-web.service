@@ -1,0 +1,22 @@
+[Unit]
+Description=Paper website
+After=network.target
+
+[Service]
+User=paper
+Group=paper
+WorkingDirectory=/srv/paper/current
+EnvironmentFile=/etc/paper/paper.env
+ExecStart=/srv/paper/venv/bin/python -m paper.serve
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/paper
+MemoryMax=300M
+
+[Install]
+WantedBy=multi-user.target
