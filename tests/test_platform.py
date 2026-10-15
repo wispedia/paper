@@ -286,6 +286,7 @@ def test_handwritten_word_reflows_parts_without_discarded_drafts(tmp_path):
     data["answers"][0]["crossed_out"].append("被删除草稿标记")
     data["answers"][0]["parts"].append({"label": "（2）", "text": "$f(x)=\\begin{cases}x^2,&x\\le0\\\\\n2x,&x>0\\end{cases}$"})
     data["answers"][0]["parts"].append({"label": "（3）", "text": "这是同一段说明，\n不应按手写位置硬换行。"})
+    data["answers"][0]["parts"].append({"label": "（4）", "text": "$x=$【待核对】$\\mathrm{m}$。\n$x_1=8\\mathrm{m}$。"})
     with ZipFile(build_handwriting_document(data, tmp_path)) as archive:
         root = etree.fromstring(archive.read("word/document.xml"))
     ns = {"m": "http://schemas.openxmlformats.org/officeDocument/2006/math", "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
@@ -296,10 +297,14 @@ def test_handwritten_word_reflows_parts_without_discarded_drafts(tmp_path):
     paragraphs = root.findall(".//w:body/w:p", ns)
     first_part = next(p for p in paragraphs if "（1）" in "".join(p.itertext()))
     assert first_part.find(".//m:oMath", ns) is not None
+    assert first_part.find("w:pPr/w:keepNext", ns) is not None
     assert not any("".join(p.itertext()).strip() in {"（1）", "（2）"} for p in paragraphs)
     prose = next(p for p in paragraphs if "这是同一段说明" in "".join(p.itertext()))
     assert "这是同一段说明，不应按手写位置硬换行。" in "".join(prose.itertext())
     assert prose.find(".//w:br", ns) is None
+    uncertain = next(p for p in paragraphs if "（4）" in "".join(p.itertext()))
+    assert "【待核对】" in "".join(uncertain.itertext())
+    assert "8" not in "".join(uncertain.itertext())
     assert "第13题：覆盖的下标需核对。" in text
     assert "班级：" not in text and "部分手写过程需对照原图。" in text
     assert root.find(".//m:f", ns) is not None and root.find(".//m:sSup", ns) is not None

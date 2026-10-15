@@ -138,6 +138,11 @@ def build_document(content, directory):
     return path
 
 
+def handwriting_calculation(text):
+    outside = MATH.sub("", text).replace("【待核对】", "")
+    return bool(MATH.search(text)) and not outside.strip(" 。；，;,. ")
+
+
 def handwriting_paragraphs(text):
     """Reflow prose outside equations; never split a multiline math construct."""
     lines, current = [], ""
@@ -155,7 +160,7 @@ def handwriting_paragraphs(text):
     prose = ""
     for line in lines:
         # Pure calculation lines remain steps; natural-language lines wrap normally.
-        formula = bool(MATH.search(line)) and not MATH.sub("", line).strip(" 。；，;,. ")
+        formula = handwriting_calculation(line)
         if not line or formula:
             if prose:
                 blocks.append(prose)
@@ -201,7 +206,9 @@ def build_handwriting_document(content, directory):
                     fmt.tab_stops.add_tab_stop(Cm(.85))
                     p.add_run(part["label"] + "\t")
                 inline(p, block)
-                fmt.keep_together = bool(MATH.search(block)) and not MATH.sub("", block).strip(" 。；，;,. ")
+                fmt.keep_together = handwriting_calculation(block)
+                # Keep the part's opening with its first calculation, not a full page.
+                fmt.keep_with_next = index == 0 and len(blocks) > 1
         # Legacy results may contain crossed_out; it is deliberately never exported.
     notes = warnings(content)
     if notes:
